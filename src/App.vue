@@ -5,7 +5,7 @@ import { ref, onMounted } from 'vue'
 // 請確保此處的 URL 與教師端設定的完全一致
 // ⚠️ 重要：分開設定題目與成績的網址
 const QUIZ_URL = 'https://script.google.com/macros/s/AKfycbyR7t58ExcpPfuuEY6wPz4ctdJg_V9fQ0klVnopEHYnYvn-DF-OzL8YxJTtKCI1h5nvCQ/exec'; 
-const SCORE_URL = 'https://script.google.com/macros/s/AKfycbyR7t58ExcpPfuuEY6wPz4ctdJg_V9fQ0klVnopEHYnYvn-DF-OzL8YxJTtKCI1h5nvCQ/exec';
+const SCORE_URL = 'https://script.google.com/macros/s/AKfycbxwuZPaq_YZGm0IIerf31-qGy4PctH8CoP006_k_rxd_jA3dNoPtFYjTRFOlCECy6_C9A/exec';
 
 // --- 狀態管理 ---
 const title = ref('測驗卷')
