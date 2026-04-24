@@ -5,7 +5,7 @@ import { ref, onMounted } from 'vue'
 // 請確保此處的 URL 與教師端設定的完全一致
 // ⚠️ 重要：分開設定題目與成績的網址
 const QUIZ_URL = 'https://script.google.com/macros/s/AKfycbyR7t58ExcpPfuuEY6wPz4ctdJg_V9fQ0klVnopEHYnYvn-DF-OzL8YxJTtKCI1h5nvCQ/exec'; 
-const SCORE_URL = 'https://script.google.com/macros/s/AKfycbxwuZPaq_YZGm0IIerf31-qGy4PctH8CoP006_k_rxd_jA3dNoPtFYjTRFOlCECy6_C9A/exec';
+const SCORE_URL = 'https://script.google.com/macros/s/AKfycbyR7t58ExcpPfuuEY6wPz4ctdJg_V9fQ0klVnopEHYnYvn-DF-OzL8YxJTtKCI1h5nvCQ/exec';
 
 // --- 狀態管理 ---
 const title = ref('測驗卷')
@@ -30,12 +30,17 @@ const loadQuiz = async () => {
     const data = await response.json();
     console.log('從 GAS 接收到的原始資料:', data); // 讓你在 F12 檢查資料結構
     
-    // 彈性處理資料格式：支援直接回傳陣列，或包在 data/questions 屬性中的格式
-    const questions = Array.isArray(data) ? data : (data.data || data.questions);
+    // 彈性處理資料格式：優先讀取 "Questions" 屬性 (對應教師端設定)
+    const questions = Array.isArray(data) ? data : (data.Questions || data.questions || data.data);
 
     if (questions && Array.isArray(questions) && questions.length > 0) {
-      quizQuestions.value = questions.map(q => ({
+      quizQuestions.value = questions.map((q, idx) => ({
         ...q,
+        // 確保關鍵欄位存在，並處理可能的大小寫欄位差異
+        id: q.id || `q-${idx}`,
+        question: q.question || q.Question || '題目內容載入失敗',
+        options: q.options || q.Options || [],
+        answer: q.answer !== undefined ? q.answer : q.Answer,
         // 初始化作答區：多選為陣列，其餘為 null
         userAnswer: q.type === 'multiple' ? [] : null
       }));
@@ -65,13 +70,15 @@ const submitExam = async () => {
   let correctCount = 0;
   quizQuestions.value.forEach(q => {
     if (q.type === 'multiple') {
+      // 確保答案與使用者作答皆為陣列且內容一致
       const isCorrect = Array.isArray(q.userAnswer) && 
+                        Array.isArray(q.answer) &&
                         q.userAnswer.length === q.answer.length &&
-                        q.userAnswer.every(val => q.answer.includes(val));
+                        q.userAnswer.every(val => q.answer.map(Number).includes(Number(val)));
       if (isCorrect) correctCount++;
     } else {
-      // 單選與是非題的答案是單一值 (索引或布林值)
-      if (q.userAnswer === q.answer) correctCount++;
+      // 單選與是非題：使用非嚴格相等或轉型比較，防止 GAS 傳回字串索引導致的錯誤
+      if (String(q.userAnswer) === String(q.answer)) correctCount++;
     }
   });
 
