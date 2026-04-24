@@ -1,73 +1,94 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 
-// 測驗卷資料與作答狀態
+// --- 配置區 ---
+// 請確保此處的 URL 與教師端設定的完全一致
+const DATABASE_URL = 'https://YOUR-PROJECT-ID.firebaseio.com'; 
+
+// --- 狀態管理 ---
 const title = ref('測驗卷')
-const questions = ref([])
-const userAnswers = ref({})
-const isSubmitted = ref(false)
-const score = ref(0)
+const quizQuestions = ref([]); // 儲存從教師端抓取的題目
+const studentName = ref('');    // 學生姓名
+const isSubmitted = ref(false); // 是否已提交
+const finalScore = ref(0);      // 計算出的分數
+const isLoading = ref(true);    // 載入狀態
 
-// 模擬從教師端獲取題目 (實作時請更換為實際的 API Endpoint)
-const fetchQuestions = async () => {
+// --- 1. 讀取題目 (Fetch Quiz) ---
+const loadQuiz = async () => {
+  isLoading.value = true;
   try {
-    // 注意：由於 GitHub Pages 是靜態網頁，通常會讀取其中的 JSON 檔案
-    // 這裡假設教師端有一個 questions.json
-    const response = await fetch('https://413730739.github.io/0417/questions.json')
-    if (response.ok) {
-      questions.value = await response.json()
+    const response = await fetch(`${DATABASE_URL}/quiz.json`);
+    const data = await response.json();
+    
+    if (data) {
+      // 初始化作答空間 (如果是多選題則初始化為陣列)
+      quizQuestions.value = data.map(q => ({
+        ...q,
+        userAnswer: q.type === 'multiple' ? [] : null
+      }));
     } else {
-      // 測試用模擬資料
-      questions.value = [
-        { id: 1, text: 'Vue 是一種什麼類型的框架？', options: ['後端', '前端', '資料庫'], answer: '前端' },
-        { id: 2, text: '響應式網頁主要是靠什麼技術達成？', options: ['CSS Media Queries', 'SQL', 'C++'], answer: 'CSS Media Queries' }
-      ]
+      console.log('目前沒有可用的測驗題目');
     }
   } catch (error) {
-    console.error('無法獲取題目:', error)
+    console.error('讀取題目失敗:', error);
+    alert('無法連線至題目伺服器');
+  } finally {
+    isLoading.value = false;
   }
-}
+};
 
-// 提交答案並上傳成績
-const submitQuiz = async () => {
-  let correctCount = 0
-  questions.value.forEach(q => {
-    if (userAnswers.value[q.id] === q.answer) {
-      correctCount++
+// --- 2. 提交成績 (Submit Results) ---
+const submitExam = async () => {
+  if (!studentName.value.trim()) {
+    return alert('請先輸入姓名再提交');
+  }
+
+  // A. 計算分數
+  let correctCount = 0;
+  quizQuestions.value.forEach(q => {
+    if (q.type === 'multiple') {
+      const isCorrect = Array.isArray(q.userAnswer) && 
+                        q.userAnswer.length === q.answer.length &&
+                        q.userAnswer.every(val => q.answer.includes(val));
+      if (isCorrect) correctCount++;
+    } else {
+      if (q.userAnswer === q.answer) correctCount++;
     }
-  })
-  
-  score.value = Math.round((correctCount / questions.value.length) * 100)
-  isSubmitted.value = true
+  });
 
-  // 上傳成績到教師端統計 (需有後端 API 支援)
+  finalScore.value = Math.round((correctCount / quizQuestions.value.length) * 100);
+
+  // B. 準備傳送給教師端的資料
+  const resultData = {
+    name: studentName.value,
+    score: finalScore.value,
+    timestamp: new Date().toLocaleTimeString('zh-TW', { hour12: false }),
+    submitAt: new Date().toISOString()
+  };
+
   try {
-    await fetch('https://your-api-server.com/api/submit-score', {
+    // 使用 POST 方法將成績「新增」到 results 路徑
+    const response = await fetch(`${DATABASE_URL}/results.json`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        studentId: 'Student_001', // 可加入學生編號
-        score: score.value,
-        timestamp: new Date().toISOString()
-      })
-    })
-    alert('成績已上傳至教師端！')
-  } catch (error) {
-    console.warn('成績上傳失敗（需實作後端接收端）:', error)
-  }
-}
+      body: JSON.stringify(resultData)
+    });
 
-let timer = null
+    if (response.ok) {
+      isSubmitted.value = true;
+      alert(`提交成功！你的得分是：${finalScore.value}`);
+    } else {
+      throw new Error('提交失敗');
+    }
+  } catch (error) {
+    console.error('提交成績出錯:', error);
+    alert('成績上傳失敗，請檢查網路連線');
+  }
+};
 
 onMounted(() => {
-  fetchQuestions()
-  // 若需「及時」出現，可使用 setInterval 輪詢或 WebSocket
-  timer = setInterval(fetchQuestions, 30000) // 每 30 秒更新一次題目
-})
-
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
-})
+  loadQuiz();
+});
 </script>
 
 <template>
@@ -77,26 +98,40 @@ onUnmounted(() => {
     </header>
 
     <main>
-      <div v-if="!isSubmitted">
-        <section v-for="(q, index) in questions" :key="q.id" class="question-card">
+      <div v-if="isLoading" class="loading-state">載入題目中...</div>
+
+      <div v-else-if="!isSubmitted">
+        <div class="student-info">
+          <input v-model="studentName" type="text" placeholder="請輸入姓名" class="name-input">
+        </div>
+
+        <section v-for="(q, index) in quizQuestions" :key="q.id + '-' + index" class="question-card">
           <p class="question-text">{{ index + 1 }}. {{ q.text }}</p>
           <div class="options">
-            <label v-for="option in q.options" :key="option" class="option-item">
-              <input type="radio" :name="'q'+q.id" :value="option" v-model="userAnswers[q.id]">
-              {{ option }}
-            </label>
+            <template v-if="q.type !== 'multiple'">
+              <label v-for="option in q.options" :key="option" class="option-item">
+                <input type="radio" :name="'q'+q.id" :value="option" v-model="q.userAnswer">
+                {{ option }}
+              </label>
+            </template>
+            <template v-else>
+              <label v-for="option in q.options" :key="option" class="option-item">
+                <input type="checkbox" :value="option" v-model="q.userAnswer">
+                {{ option }}
+              </label>
+            </template>
           </div>
         </section>
 
-        <button @click="submitQuiz" class="submit-btn" :disabled="questions.length === 0">
+        <button @click="submitExam" class="submit-btn" :disabled="quizQuestions.length === 0">
           提交測驗
         </button>
       </div>
 
       <div v-else class="result-card">
         <h2>測驗完成</h2>
-        <p class="score-display">您的得分：<span>{{ score }}</span></p>
-        <button @click="isSubmitted = false; userAnswers = {}" class="retry-btn">重新作答</button>
+        <p class="score-display">您的得分：<span>{{ finalScore }}</span></p>
+        <button @click="isSubmitted = false; studentName = ''; loadQuiz()" class="retry-btn">重新作答</button>
       </div>
     </main>
   </div>
@@ -141,9 +176,29 @@ h1 {
   margin-top: 10px;
 }
 
+.student-info {
+  margin-bottom: 20px;
+}
+
+.name-input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+  box-sizing: border-box;
+  outline: none;
+}
+
 .option-item {
   cursor: pointer;
   padding: 5px;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 50px;
+  font-size: 1.2rem;
 }
 
 .submit-btn, .retry-btn {
@@ -155,6 +210,11 @@ h1 {
   border-radius: 4px;
   font-size: 1rem;
   cursor: pointer;
+}
+
+.submit-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 
 .result-card {
