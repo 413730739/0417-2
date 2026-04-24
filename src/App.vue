@@ -3,9 +3,9 @@ import { ref, onMounted } from 'vue'
 
 // --- 配置區 ---
 // 請確保此處的 URL 與教師端設定的完全一致
-// 注意：請從 Firebase 控制台複製完整的網址，結尾不要加斜線
-// 重要：請將下方的 YOUR-PROJECT-ID 換成你真正的 Firebase 專案 ID
-const DATABASE_URL = 'https://YOUR-PROJECT-ID.firebaseio.com'; 
+// ⚠️ 重要：請確保這裡的網址與教師端 App.vue 中的 DATABASE_URL 完全相同
+// 這是你部署的 Google Apps Script 網頁應用程式 URL
+const DATABASE_URL = 'https://script.google.com/macros/s/AKfycbwuZPaq_YZGm0IIerf31-qGy4PctH8CoP006_k_rxd_jA3dNoPtFYjTRFOlCECy6_C9A/exec'; 
 
 // --- 狀態管理 ---
 const title = ref('測驗卷')
@@ -19,30 +19,29 @@ const isLoading = ref(true);    // 載入狀態
 const loadQuiz = async () => {
   isLoading.value = true;
   try {
-    const response = await fetch(`${DATABASE_URL}/quiz.json`);
+    // 使用 Google Apps Script 的 GET 請求，並帶上 action 參數
+    const response = await fetch(`${DATABASE_URL}?action=getQuiz&_t=${Date.now()}`); // 加上時間戳防止快取
     
     if (!response.ok) {
-      throw new Error(`找不到資料庫路徑 (404)。請確認 DATABASE_URL 是否正確，且教師端已提交過題目。`);
+      // 如果 HTTP 狀態碼不是 2xx，則拋出錯誤
+      throw new Error(`HTTP 錯誤: ${response.status} - 無法從 Google Apps Script 取得題目。`);
     }
     
     const data = await response.json();
     
-    // 檢查 data 是否存在且為物件/陣列
-    if (data && typeof data === 'object') {
-      // 將 Firebase 的資料統一轉換為陣列格式
-      const questionsArray = Array.isArray(data) ? data : Object.values(data);
-      
-      quizQuestions.value = questionsArray.map(q => ({
+    if (data && Array.isArray(data)) {
+      quizQuestions.value = data.map(q => ({
         ...q,
+        // 初始化作答區：多選為陣列，其餘為 null
         userAnswer: q.type === 'multiple' ? [] : null
       }));
     } else {
       quizQuestions.value = [];
-      console.warn('目前資料庫中沒有題目。');
+      console.warn('目前資料庫中沒有題目，或資料格式不正確。');
     }
   } catch (error) {
     console.error('讀取題目失敗:', error);
-    alert(`連線失敗: ${error.message}`);
+    alert(`連線失敗: ${error.message}\n請確認 Google Apps Script 網址是否正確，且已部署為「所有人」可存取的網頁應用程式。`);
   } finally {
     isLoading.value = false;
   }
@@ -54,6 +53,11 @@ const submitExam = async () => {
     return alert('請先輸入姓名再提交');
   }
 
+  // 檢查是否有題目未作答
+  if (quizQuestions.value.some(q => q.userAnswer === null || (Array.isArray(q.userAnswer) && q.userAnswer.length === 0))) {
+    if(!confirm('還有題目沒寫完，確定要提交嗎？')) return;
+  }
+
   // A. 計算分數
   let correctCount = 0;
   quizQuestions.value.forEach(q => {
@@ -63,6 +67,7 @@ const submitExam = async () => {
                         q.userAnswer.every(val => q.answer.includes(val));
       if (isCorrect) correctCount++;
     } else {
+      // 單選與是非題的答案是單一值 (索引或布林值)
       if (q.userAnswer === q.answer) correctCount++;
     }
   });
@@ -71,26 +76,25 @@ const submitExam = async () => {
 
   // B. 準備傳送給教師端的資料
   const resultData = {
+    action: 'submitScore', // 告知 Apps Script 這是提交成績的動作
     name: studentName.value,
     score: finalScore.value,
-    timestamp: new Date().toLocaleTimeString('zh-TW', { hour12: false }),
-    submitAt: new Date().toISOString()
+    timestamp: new Date().toLocaleString('zh-TW', { hour12: false }), // 使用本地時間格式
   };
 
   try {
-    // 使用 POST 方法將成績「新增」到 results 路徑
-    const response = await fetch(`${DATABASE_URL}/results.json`, {
+    // 提交到 Google Script 的 doPost
+    await fetch(DATABASE_URL, {
       method: 'POST',
+      mode: 'no-cors', // 重要：Google Script 提交通常需要 no-cors
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(resultData)
     });
 
-    if (response.ok) {
-      isSubmitted.value = true;
-      alert(`提交成功！你的得分是：${finalScore.value}`);
-    } else {
-      throw new Error('提交失敗');
-    }
+    // 由於 no-cors 無法讀取 response.ok，我們直接假設發送成功
+    isSubmitted.value = true;
+    alert(`提交成功！你的得分是：${finalScore.value}`);
+    
   } catch (error) {
     console.error('提交成績出錯:', error);
     alert('成績上傳失敗，請檢查網路連線');
@@ -113,6 +117,7 @@ onMounted(() => {
 
       <div v-else-if="!isSubmitted">
         <div class="student-info">
+          <label>您的姓名：</label>
           <input v-model="studentName" type="text" placeholder="請輸入姓名" class="name-input">
         </div>
 
@@ -121,18 +126,32 @@ onMounted(() => {
         </div>
 
         <section v-else v-for="(q, index) in quizQuestions" :key="q.id + '-' + index" class="question-card">
-          <p class="question-text">{{ index + 1 }}. {{ q.text }}</p>
+          <!-- 這裡使用 q.question 以對應教師端發佈的資料結構 -->
+          <p class="question-text">{{ index + 1 }}. {{ q.question }}</p>
           <div class="options">
-            <template v-if="q.type !== 'multiple'">
-              <label v-for="option in q.options" :key="option" class="option-item">
-                <input type="radio" :name="'q'+q.id" :value="option" v-model="q.userAnswer">
-                {{ option }}
+            <!-- 單選題 -->
+            <template v-if="q.type === 'single'">
+              <label v-for="(opt, optIdx) in q.options" :key="optIdx" class="option-item">
+                <input type="radio" :name="'q'+q.id" :value="optIdx" v-model="q.userAnswer">
+                {{ opt }}
               </label>
             </template>
-            <template v-else>
-              <label v-for="option in q.options" :key="option" class="option-item">
-                <input type="checkbox" :value="option" v-model="q.userAnswer">
-                {{ option }}
+
+            <!-- 多選題 -->
+            <template v-else-if="q.type === 'multiple'">
+              <label v-for="(opt, optIdx) in q.options" :key="optIdx" class="option-item">
+                <input type="checkbox" :value="optIdx" v-model="q.userAnswer">
+                {{ opt }}
+              </label>
+            </template>
+
+            <!-- 是非題 -->
+            <template v-else-if="q.type === 'boolean'">
+              <label class="option-item">
+                <input type="radio" :name="'q'+q.id" :value="true" v-model="q.userAnswer"> 正確 (O)
+              </label>
+              <label class="option-item">
+                <input type="radio" :name="'q'+q.id" :value="false" v-model="q.userAnswer"> 錯誤 (X)
               </label>
             </template>
           </div>
