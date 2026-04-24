@@ -4,7 +4,10 @@ import { ref, onMounted } from 'vue'
 // --- 配置區 ---
 // 請確保此處的 URL 與教師端設定的完全一致
 // ⚠️ 重要：分開設定題目與成績的網址
-const QUIZ_URL = 'https://script.google.com/macros/s/AKfycbyR7t58ExcpPfuuEY6wPz4ctdJg_V9fQ0klVnopEHYnYvn-DF-OzL8YxJTtKCI1h5nvCQ/exec'; 
+// 開發環境使用 Vite Proxy 解決 CORS 問題，生產環境則使用完整 GAS 網址
+const QUIZ_URL = import.meta.env.DEV 
+  ? '/api-quiz/exec' 
+  : 'https://script.google.com/macros/s/AKfycbyR7t58ExcpPfuuEY6wPz4ctdJg_V9fQ0klVnopEHYnYvn-DF-OzL8YxJTtKCI1h5nvCQ/exec';
 const SCORE_URL = 'https://script.google.com/macros/s/AKfycbxwuZPaq_YZGm0IIerf31-qGy4PctH8CoP006_k_rxd_jA3dNoPtFYjTRFOlCECy6_C9A/exec';
 
 // --- 狀態管理 ---
@@ -14,21 +17,44 @@ const studentName = ref('');    // 學生姓名
 const isSubmitted = ref(false); // 是否已提交
 const finalScore = ref(0);      // 計算出的分數
 const isLoading = ref(true);    // 載入狀態
+const errorMessage = ref('');    // 錯誤簡述 (顯示於畫面)
+const errorDetail = ref('');     // 詳細錯誤資訊 (除錯用)
 
 // --- 1. 讀取題目 (Fetch Quiz) ---
 const loadQuiz = async () => {
   isLoading.value = true;
+  errorMessage.value = '';
+  errorDetail.value = '';
   try {
     // 使用 Google Apps Script 的 GET 請求，並帶上 action 參數
-    const response = await fetch(`${QUIZ_URL}?action=getQuiz&_t=${Date.now()}`); // 加上時間戳防止快取
+    // 移除不必要的 headers 以確保觸發「簡單請求 (Simple Request)」
+    const response = await fetch(`${QUIZ_URL}?action=getQuestions&_t=${Date.now()}`, {
+      method: 'GET',
+      redirect: 'follow' // Google Script 會進行多次重定向，這行很關鍵
+    });
     
     if (!response.ok) {
       // 如果 HTTP 狀態碼不是 2xx，則拋出錯誤
       throw new Error(`HTTP 錯誤: ${response.status} - 無法從 Google Apps Script 取得題目。`);
     }
     
-    const data = await response.json();
-    console.log('從 GAS 接收到的原始資料:', data); // 讓你在 F12 檢查資料結構
+    // 先讀取文字，防止 JSON 解析失敗導致抓不到錯誤內容
+    const rawText = await response.text();
+    let data;
+    try {
+      data = JSON.parse(rawText);
+      console.log('從 GAS 接收到的原始資料:', data);
+    } catch (parseError) {
+      if (rawText.includes('errorMessage') || rawText.includes('script-error')) {
+        errorMessage.value = 'Google Apps Script 執行發生內部錯誤';
+        errorDetail.value = '請檢查 GAS 端的「執行效能」日誌，通常是程式碼 Bug 或試算表權限問題。';
+      } else {
+        errorMessage.value = '後端回傳內容並非 JSON 格式 (可能是登入頁面)';
+        errorDetail.value = `解析失敗！收到內容開頭為：\n${rawText.slice(0, 300)}...`;
+      }
+      console.error('JSON 解析失敗:', rawText);
+      return;
+    }
     
     // 彈性處理資料格式：優先讀取 "Questions" 屬性 (對應教師端設定)
     const questions = Array.isArray(data) ? data : (data.Questions || data.questions || data.data);
@@ -45,11 +71,23 @@ const loadQuiz = async () => {
         userAnswer: q.type === 'multiple' ? [] : null
       }));
     } else {
-      console.warn('目前資料庫中沒有題目，或資料格式不正確。');
+      const msg = '目前資料庫中沒有題目，或資料格式不正確。';
+      console.warn(msg);
+      errorMessage.value = '資料載入成功，但內容格式不符';
+      errorDetail.value = `從 GAS 接收到的原始資料：\n${JSON.stringify(data, null, 2)}`;
     }
   } catch (error) {
-    console.error('讀取題目失敗:', error);
-    alert(`連線失敗: ${error.message}\n請確認 Google Apps Script 網址是否正確，且已部署為「所有人」可存取的網頁應用程式。`);
+    // 當 CORS 發生時，fetch 會拋出 TypeError: Failed to fetch
+    console.error('讀取題目時發生錯誤 (可能為 CORS 或網路問題):', error);
+    errorMessage.value = error.name === 'TypeError' ? '網路請求失敗 (可能是 CORS 阻擋)' : '程式執行發生異常';
+    errorDetail.value = `錯誤訊息: ${error.message}\n\n目標網址: ${QUIZ_URL}\n\n堆疊資訊:\n${error.stack}`;
+
+    alert(
+      `無法載入題目。\n\n` +
+      `常見原因：\n` +
+      `1. GAS 部署時「誰可以存取」未設定為「任何人」。\n` +
+      `2. GAS 程式碼出錯，導致回傳了錯誤網頁而非 JSON。`
+    );
   } finally {
     isLoading.value = false;
   }
@@ -86,15 +124,15 @@ const submitExam = async () => {
 
   // B. 準備傳送給教師端的資料
   const resultData = {
-    action: 'submitScore', // 告知 Apps Script 這是提交成績的動作
+    action: 'submitResult', // 告知 Apps Script 這是提交成績的動作 (對齊 GAS 的 submitResult)
     name: studentName.value,
     score: finalScore.value,
     timestamp: new Date().toLocaleString('zh-TW', { hour12: false }), // 使用本地時間格式
   };
 
   try {
-    // 提交到 Google Script 的 doPost
-    await fetch(SCORE_URL, {
+    // 提交到 Google Script 的 doPost (統一使用 QUIZ_URL，因為 GAS 同時處理 Get/Post)
+    await fetch(QUIZ_URL, {
       method: 'POST',
       mode: 'no-cors', // 重要：Google Script 提交通常需要 no-cors
       headers: { 'Content-Type': 'application/json' },
@@ -124,6 +162,14 @@ onMounted(() => {
 
     <main>
       <div v-if="isLoading" class="loading-state">載入題目中...</div>
+
+      <!-- 除錯顯示區：當發生載入錯誤時顯示 -->
+      <div v-else-if="errorMessage" class="error-debug-container">
+        <h3>❌ 載入失敗 (除錯資訊)</h3>
+        <p class="error-msg">{{ errorMessage }}</p>
+        <pre class="error-detail">{{ errorDetail }}</pre>
+        <button @click="loadQuiz" class="retry-btn" style="margin-top: 15px;">重試載入題目</button>
+      </div>
 
       <div v-else-if="!isSubmitted">
         <div class="student-info">
@@ -269,6 +315,34 @@ h1 {
   text-align: center;
   padding: 50px;
   font-size: 1.2rem;
+}
+
+.error-debug-container {
+  background-color: #fff5f5;
+  border: 2px solid #feb2b2;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 20px 0;
+  text-align: left;
+}
+
+.error-msg {
+  color: #c53030;
+  font-weight: bold;
+  font-size: 1.1rem;
+  margin-bottom: 12px;
+}
+
+.error-detail {
+  background: #1a202c;
+  color: #a0aec0;
+  padding: 15px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .empty-notice {
