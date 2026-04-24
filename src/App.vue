@@ -3,6 +3,8 @@ import { ref, onMounted } from 'vue'
 
 // --- 配置區 ---
 // 請確保此處的 URL 與教師端設定的完全一致
+// 注意：請從 Firebase 控制台複製完整的網址，結尾不要加斜線
+// 重要：請將下方的 YOUR-PROJECT-ID 換成你真正的 Firebase 專案 ID
 const DATABASE_URL = 'https://YOUR-PROJECT-ID.firebaseio.com'; 
 
 // --- 狀態管理 ---
@@ -18,20 +20,29 @@ const loadQuiz = async () => {
   isLoading.value = true;
   try {
     const response = await fetch(`${DATABASE_URL}/quiz.json`);
+    
+    if (!response.ok) {
+      throw new Error(`找不到資料庫路徑 (404)。請確認 DATABASE_URL 是否正確，且教師端已提交過題目。`);
+    }
+    
     const data = await response.json();
     
-    if (data) {
-      // 初始化作答空間 (如果是多選題則初始化為陣列)
-      quizQuestions.value = data.map(q => ({
+    // 檢查 data 是否存在且為物件/陣列
+    if (data && typeof data === 'object') {
+      // 將 Firebase 的資料統一轉換為陣列格式
+      const questionsArray = Array.isArray(data) ? data : Object.values(data);
+      
+      quizQuestions.value = questionsArray.map(q => ({
         ...q,
         userAnswer: q.type === 'multiple' ? [] : null
       }));
     } else {
-      console.log('目前沒有可用的測驗題目');
+      quizQuestions.value = [];
+      console.warn('目前資料庫中沒有題目。');
     }
   } catch (error) {
     console.error('讀取題目失敗:', error);
-    alert('無法連線至題目伺服器');
+    alert(`連線失敗: ${error.message}`);
   } finally {
     isLoading.value = false;
   }
@@ -105,7 +116,11 @@ onMounted(() => {
           <input v-model="studentName" type="text" placeholder="請輸入姓名" class="name-input">
         </div>
 
-        <section v-for="(q, index) in quizQuestions" :key="q.id + '-' + index" class="question-card">
+        <div v-if="quizQuestions.length === 0" class="empty-notice">
+          目前尚未有測驗題目，請聯繫老師出題。
+        </div>
+
+        <section v-else v-for="(q, index) in quizQuestions" :key="q.id + '-' + index" class="question-card">
           <p class="question-text">{{ index + 1 }}. {{ q.text }}</p>
           <div class="options">
             <template v-if="q.type !== 'multiple'">
@@ -123,7 +138,7 @@ onMounted(() => {
           </div>
         </section>
 
-        <button @click="submitExam" class="submit-btn" :disabled="quizQuestions.length === 0">
+        <button v-if="quizQuestions.length > 0" @click="submitExam" class="submit-btn">
           提交測驗
         </button>
       </div>
@@ -191,14 +206,48 @@ h1 {
 }
 
 .option-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border: 2px solid #f0f0f0;
+  border-radius: 10px;
   cursor: pointer;
-  padding: 5px;
+  transition: all 0.25s ease;
+  background-color: #fff;
+  user-select: none;
+}
+
+.option-item:hover {
+  border-color: #42b983;
+  background-color: #f0faf5;
+}
+
+/* 當內部的 input 被勾選時，改變整個標籤的樣式 */
+.option-item:has(input:checked) {
+  border-color: #42b983;
+  background-color: #e7f3ed;
+  box-shadow: 0 2px 8px rgba(66, 185, 131, 0.2);
+}
+
+.option-item input {
+  margin-right: 12px;
+  width: 18px;
+  height: 18px;
+  accent-color: #42b983; /* 統一 Checkbox 與 Radio 的主題顏色 */
 }
 
 .loading-state {
   text-align: center;
   padding: 50px;
   font-size: 1.2rem;
+}
+
+.empty-notice {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+  background: #f0f0f0;
+  border-radius: 8px;
 }
 
 .submit-btn, .retry-btn {
