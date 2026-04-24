@@ -3,9 +3,9 @@ import { ref, onMounted } from 'vue'
 
 // --- 配置區 ---
 // 請確保此處的 URL 與教師端設定的完全一致
-// ⚠️ 重要：請確保這裡的網址與教師端 App.vue 中的 DATABASE_URL 完全相同
-// 這是你部署的 Google Apps Script 網頁應用程式 URL
-const DATABASE_URL = 'https://script.google.com/macros/s/AKfycbwuZPaq_YZGm0IIerf31-qGy4PctH8CoP006_k_rxd_jA3dNoPtFYjTRFOlCECy6_C9A/exec'; 
+// ⚠️ 重要：分開設定題目與成績的網址
+const QUIZ_URL = 'https://script.google.com/macros/s/AKfycbyR7t58ExcpPfuuEY6wPz4ctdJg_V9fQ0klVnopEHYnYvn-DF-OzL8YxJTtKCI1h5nvCQ/exec'; 
+const SCORE_URL = 'https://script.google.com/macros/s/AKfycbxwuZPaq_YZGm0IIerf31-qGy4PctH8CoP006_k_rxd_jA3dNoPtFYjTRFOlCECy6_C9A/exec';
 
 // --- 狀態管理 ---
 const title = ref('測驗卷')
@@ -20,7 +20,7 @@ const loadQuiz = async () => {
   isLoading.value = true;
   try {
     // 使用 Google Apps Script 的 GET 請求，並帶上 action 參數
-    const response = await fetch(`${DATABASE_URL}?action=getQuiz&_t=${Date.now()}`); // 加上時間戳防止快取
+    const response = await fetch(`${QUIZ_URL}?action=getQuiz&_t=${Date.now()}`); // 加上時間戳防止快取
     
     if (!response.ok) {
       // 如果 HTTP 狀態碼不是 2xx，則拋出錯誤
@@ -84,7 +84,7 @@ const submitExam = async () => {
 
   try {
     // 提交到 Google Script 的 doPost
-    await fetch(DATABASE_URL, {
+    await fetch(SCORE_URL, {
       method: 'POST',
       mode: 'no-cors', // 重要：Google Script 提交通常需要 no-cors
       headers: { 'Content-Type': 'application/json' },
