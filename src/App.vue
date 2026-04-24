@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 // 測驗卷資料與作答狀態
 const title = ref('測驗卷')
@@ -57,10 +57,16 @@ const submitQuiz = async () => {
   }
 }
 
+let timer = null
+
 onMounted(() => {
   fetchQuestions()
   // 若需「及時」出現，可使用 setInterval 輪詢或 WebSocket
-  setInterval(fetchQuestions, 30000) // 每 30 秒更新一次題目
+  timer = setInterval(fetchQuestions, 30000) // 每 30 秒更新一次題目
+})
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
 })
 </script>
 
