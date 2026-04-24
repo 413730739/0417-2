@@ -28,15 +28,18 @@ const loadQuiz = async () => {
     }
     
     const data = await response.json();
+    console.log('從 GAS 接收到的原始資料:', data); // 讓你在 F12 檢查資料結構
     
-    if (data && Array.isArray(data)) {
-      quizQuestions.value = data.map(q => ({
+    // 彈性處理資料格式：支援直接回傳陣列，或包在 data/questions 屬性中的格式
+    const questions = Array.isArray(data) ? data : (data.data || data.questions);
+
+    if (questions && Array.isArray(questions) && questions.length > 0) {
+      quizQuestions.value = questions.map(q => ({
         ...q,
         // 初始化作答區：多選為陣列，其餘為 null
         userAnswer: q.type === 'multiple' ? [] : null
       }));
     } else {
-      quizQuestions.value = [];
       console.warn('目前資料庫中沒有題目，或資料格式不正確。');
     }
   } catch (error) {
