@@ -90,6 +90,16 @@ const loadQuiz = async () => {
   }
 };
 
+// --- 輔助函式：轉換題型文字 ---
+const getQuestionTypeLabel = (type) => {
+  const labels = {
+    'single': '單選',
+    'multiple': '多選',
+    'boolean': '是非'
+  };
+  return labels[type] || '未知';
+};
+
 // --- 2. 提交成績 (Submit Results) ---
 const submitExam = async () => {
   if (!studentName.value.trim()) {
@@ -208,6 +218,7 @@ onMounted(() => {
 
           <section v-for="(q, index) in quizQuestions" :key="q.id + '-' + index" class="question-card">
             <p class="question-text">{{ index + 1 }}. {{ q.question }}</p>
+            <div class="type-badge-row">{{ getQuestionTypeLabel(q.type) }}</div>
             <div class="options">
               <!-- 單選題 -->
               <template v-if="q.type === 'single'">
@@ -282,6 +293,13 @@ h1 {
 .question-text {
   font-weight: bold;
   font-size: 1.1rem;
+}
+
+.type-badge-row {
+  color: #42b983;
+  font-size: 0.9rem;
+  margin: 5px 0 10px 0;
+  font-weight: 500;
 }
 
 .options {
