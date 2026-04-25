@@ -3,12 +3,11 @@ import { ref, onMounted } from 'vue'
 
 // --- 配置區 ---
 // 請確保此處的 URL 與教師端設定的完全一致
-// ⚠️ 重要：分開設定題目與成績的網址
+// ⚠️ 所有的請求（取得題目、提交成績、詳細作答）現在統一回傳至此網址
 // 開發環境使用 Vite Proxy 解決 CORS 問題，生產環境則使用完整 GAS 網址
 const QUIZ_URL = import.meta.env.DEV 
   ? '/api-quiz/exec' 
   : 'https://script.google.com/macros/s/AKfycbyR7t58ExcpPfuuEY6wPz4ctdJg_V9fQ0klVnopEHYnYvn-DF-OzL8YxJTtKCI1h5nvCQ/exec';
-const SCORE_URL = 'https://script.google.com/macros/s/AKfycbxwuZPaq_YZGm0IIerf31-qGy4PctH8CoP006_k_rxd_jA3dNoPtFYjTRFOlCECy6_C9A/exec';
 
 // --- 狀態管理 ---
 const title = ref('測驗卷')
@@ -59,7 +58,7 @@ const loadQuiz = async () => {
     // 彈性處理資料格式：優先讀取 "Questions" 屬性 (對應教師端設定)
     const questions = Array.isArray(data) ? data : (data.Questions || data.questions || data.data);
 
-    if (questions && Array.isArray(questions) && questions.length > 0) {
+    if (Array.isArray(questions)) {
       quizQuestions.value = questions.map((q, idx) => ({
         ...q,
         // 確保關鍵欄位存在，並處理可能的大小寫欄位差異
@@ -71,8 +70,6 @@ const loadQuiz = async () => {
         userAnswer: q.type === 'multiple' ? [] : null
       }));
     } else {
-      const msg = '目前資料庫中沒有題目，或資料格式不正確。';
-      console.warn(msg);
       errorMessage.value = '資料載入成功，但內容格式不符';
       errorDetail.value = `從 GAS 接收到的原始資料：\n${JSON.stringify(data, null, 2)}`;
     }
@@ -122,21 +119,43 @@ const submitExam = async () => {
 
   finalScore.value = Math.round((correctCount / quizQuestions.value.length) * 100);
 
-  // B. 準備傳送給教師端的資料
-  const resultData = {
+  // B. 準備傳送給教師端的資料 (成績摘要)
+  const scoreSummaryData = {
     action: 'submitResult', // 告知 Apps Script 這是提交成績的動作 (對齊 GAS 的 submitResult)
     name: studentName.value,
     score: finalScore.value,
     timestamp: new Date().toLocaleString('zh-TW', { hour12: false }), // 使用本地時間格式
   };
 
+  // C. 準備傳送給教師端的資料 (詳細作答答案)
+  const detailedAnswersData = {
+    action: 'submitDetailedAnswers', // 新增一個 action 告知 GAS 這是詳細答案
+    name: studentName.value,
+    timestamp: new Date().toLocaleString('zh-TW', { hour12: false }),
+    answers: quizQuestions.value.map(q => ({
+      id: q.id,
+      type: q.type,
+      question: q.question, // 包含題目文本，方便後端識別
+      userAnswer: q.userAnswer,
+      // 如果後端需要，也可以包含正確答案：correctAnswer: q.answer
+    }))
+  };
+
   try {
-    // 提交到 Google Script 的 doPost (統一使用 QUIZ_URL，因為 GAS 同時處理 Get/Post)
+    // 1. 提交成績摘要 (姓名、分數、時間) 到 QUIZ_URL
     await fetch(QUIZ_URL, {
       method: 'POST',
       mode: 'no-cors', // 重要：Google Script 提交通常需要 no-cors
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(resultData)
+      body: JSON.stringify(scoreSummaryData)
+    });
+
+    // 2. 提交詳細作答資訊 (姓名、詳細答案、時間) 到 QUIZ_URL
+    await fetch(QUIZ_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(detailedAnswersData)
     });
 
     // 由於 no-cors 無法讀取 response.ok，我們直接假設發送成功
@@ -146,6 +165,7 @@ const submitExam = async () => {
   } catch (error) {
     console.error('提交成績出錯:', error);
     alert('成績上傳失敗，請檢查網路連線');
+    // 這裡可以根據需要判斷是哪個請求失敗，給出更精確的提示
   }
 };
 
@@ -172,50 +192,55 @@ onMounted(() => {
       </div>
 
       <div v-else-if="!isSubmitted">
-        <div class="student-info">
-          <label>您的姓名：</label>
-          <input v-model="studentName" type="text" placeholder="請輸入姓名" class="name-input">
-        </div>
-
+        <!-- 沒題目時的顯示狀態 (修正 typo 偶蹄目 -> 有題目) -->
         <div v-if="quizQuestions.length === 0" class="empty-notice">
-          目前尚未有測驗題目，請聯繫老師出題。
+          <p>尚未有測驗題目，請等待老師出題。</p>
+          <button @click="loadQuiz" class="retry-btn" style="margin-top: 15px; width: auto; padding: 10px 30px;">
+            點此重新載入題目
+          </button>
         </div>
 
-        <section v-else v-for="(q, index) in quizQuestions" :key="q.id + '-' + index" class="question-card">
-          <!-- 這裡使用 q.question 以對應教師端發佈的資料結構 -->
-          <p class="question-text">{{ index + 1 }}. {{ q.question }}</p>
-          <div class="options">
-            <!-- 單選題 -->
-            <template v-if="q.type === 'single'">
-              <label v-for="(opt, optIdx) in q.options" :key="optIdx" class="option-item">
-                <input type="radio" :name="'q'+q.id" :value="optIdx" v-model="q.userAnswer">
-                {{ opt }}
-              </label>
-            </template>
-
-            <!-- 多選題 -->
-            <template v-else-if="q.type === 'multiple'">
-              <label v-for="(opt, optIdx) in q.options" :key="optIdx" class="option-item">
-                <input type="checkbox" :value="optIdx" v-model="q.userAnswer">
-                {{ opt }}
-              </label>
-            </template>
-
-            <!-- 是非題 -->
-            <template v-else-if="q.type === 'boolean'">
-              <label class="option-item">
-                <input type="radio" :name="'q'+q.id" :value="true" v-model="q.userAnswer"> 正確 (O)
-              </label>
-              <label class="option-item">
-                <input type="radio" :name="'q'+q.id" :value="false" v-model="q.userAnswer"> 錯誤 (X)
-              </label>
-            </template>
+        <div v-else>
+          <div class="student-info">
+            <label>您的姓名：</label>
+            <input v-model="studentName" type="text" placeholder="請輸入姓名" class="name-input">
           </div>
-        </section>
 
-        <button v-if="quizQuestions.length > 0" @click="submitExam" class="submit-btn">
-          提交測驗
-        </button>
+          <section v-for="(q, index) in quizQuestions" :key="q.id + '-' + index" class="question-card">
+            <p class="question-text">{{ index + 1 }}. {{ q.question }}</p>
+            <div class="options">
+              <!-- 單選題 -->
+              <template v-if="q.type === 'single'">
+                <label v-for="(opt, optIdx) in q.options" :key="optIdx" class="option-item">
+                  <input type="radio" :name="'q'+q.id" :value="optIdx" v-model="q.userAnswer">
+                  {{ opt }}
+                </label>
+              </template>
+
+              <!-- 多選題 -->
+              <template v-else-if="q.type === 'multiple'">
+                <label v-for="(opt, optIdx) in q.options" :key="optIdx" class="option-item">
+                  <input type="checkbox" :value="optIdx" v-model="q.userAnswer">
+                  {{ opt }}
+                </label>
+              </template>
+
+              <!-- 是非題 -->
+              <template v-else-if="q.type === 'boolean'">
+                <label class="option-item">
+                  <input type="radio" :name="'q'+q.id" :value="true" v-model="q.userAnswer"> 正確 (O)
+                </label>
+                <label class="option-item">
+                  <input type="radio" :name="'q'+q.id" :value="false" v-model="q.userAnswer"> 錯誤 (X)
+                </label>
+              </template>
+            </div>
+          </section>
+
+          <button @click="submitExam" class="submit-btn">
+            提交測驗
+          </button>
+        </div>
       </div>
 
       <div v-else class="result-card">
