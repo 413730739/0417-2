@@ -264,12 +264,14 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 確保整個應用程式容器佔滿螢幕 */
 .quiz-container {
-  max-width: 800px;
-  margin: 0 auto;
+  width: 100%; /* 佔滿整個寬度 */
+  min-height: 100vh; /* 至少佔滿整個視窗高度 */
   padding: 20px;
   font-family: Arial, sans-serif;
   color: #333;
+  box-sizing: border-box; /* 確保 padding 不會增加額外的寬度 */
 }
 
 header {
