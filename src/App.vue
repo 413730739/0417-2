@@ -5,8 +5,8 @@ import { ref, onMounted, computed, watch, onUnmounted } from 'vue'
 // 請確保此處的 URL 與教師端設定的完全一致
 // ⚠️ 如果教師端分開了即時問答與測驗資料庫，請分別設定以下網址
 // 開發環境使用 Vite Proxy 解決 CORS 問題，生產環境則使用完整 GAS 網址
-const POLL_DATABASE_URL = 'https://script.google.com/macros/s/AKfycbysFb5yGkcDHXnb1-kQ-1fYFrweXFl16kkCRi_FaKMxiRkt679ayMJdfxxRdl52_-38cg/exec';
-const DATABASE_URL = 'https://script.google.com/macros/s/AKfycbyR7t58ExcpPfuuEY6wPz4ctdJg_V9fQ0klVnopEHYnYvn-DF-OzL8YxJTtKCI1h5nvCQ/exec';
+const POLL_DATABASE_URL = 'https://script.google.com/macros/s/AKfycbxcPLSDEW3rL96lfSH9N0zTbfGSG-0xM8jMR7QAaR0t52XQoBAwj7pqVJFnemUNRE6fKg/exec';
+const DATABASE_URL = 'https://script.google.com/macros/s/AKfycbyHUlQvBFXi6gtHqrLvS5dVKKDf8RLNSGGnxJs85zybPsmPT-X6DCwKR8gDkdq92VgSLA/exec';
 
 const QUIZ_URL = import.meta.env.DEV 
   ? '/api-quiz/exec' 
@@ -26,19 +26,27 @@ const isLoading = ref(true);    // 載入狀態
 const errorMessage = ref('');    // 錯誤簡述 (顯示於畫面)
 const errorDetail = ref('');     // 詳細錯誤資訊 (除錯用)
 
-// 即時問答狀態
+// 投票與回饋狀態
 const activePolls = ref([]);     // 儲存所有即時題目
 const isPollLoading = ref(false);
-const pollErrorMessage = ref(''); // 即時問答錯誤
+const pollErrorMessage = ref(''); // 投票與回饋錯誤
 const pollErrorDetail = ref('');
 const pollSubmissions = ref({});  // 追蹤每題提交狀態 { pollId: boolean }
 const pollAnswers = ref({});      // 追蹤每題答案 { pollId: value }
+const pollResults = ref({});       // 儲存每題的統計結果 { pollId: { labels: [], counts: [], total: 0 } }
 let pollTimer = null;
 
-// 當切換到即時問答分頁時，立即抓取一次資料
+// 當切換到投票與回饋分頁時，立即抓取一次資料
 watch(currentTab, (newTab) => {
   if (newTab === 'poll') {
     fetchActivePoll();
+  }
+});
+
+// 監聽姓名變化並存入本地儲存
+watch(studentName, (newName) => {
+  if (newName !== undefined) {
+    localStorage.setItem('student_name', newName);
   }
 });
 
@@ -248,7 +256,26 @@ const submitExam = async () => {
   }
 };
 
-// --- 3. 即時問答邏輯 (Real-time Poll) ---
+// --- 獲取投票結果統計 ---
+const fetchPollResults = async (pollId) => {
+  try {
+    const response = await fetch(`${POLL_URL}?action=getPollResults&pollId=${encodeURIComponent(pollId)}&_t=${Date.now()}`, {
+      method: 'GET',
+      redirect: 'follow'
+    });
+    if (!response.ok) return;
+    
+    const data = await response.json();
+    if (data && data.status === 'success') {
+      // data 格式預期為: { status: 'success', results: { '選項A': 5, '選項B': 3 }, total: 8 }
+      pollResults.value[pollId] = data;
+    }
+  } catch (error) {
+    console.error('獲取投票結果失敗:', error);
+  }
+};
+
+// --- 3. 投票與回饋邏輯 (Polls & Feedback) ---
 const fetchActivePoll = async () => {
   if (currentTab.value === 'poll' && activePolls.value.length === 0) isPollLoading.value = true;
   pollErrorMessage.value = '';
@@ -263,7 +290,7 @@ const fetchActivePoll = async () => {
     if (!response.ok) throw new Error('網路連線不正常');
 
     const rawText = await response.text();
-    console.log('即時問答原始回傳:', rawText);
+    console.log('投票與回饋原始回傳:', rawText);
 
     // 1. 檢查是否為 HTML (代表 GAS 權限問題或部署版本未更新)
     const trimmedText = rawText.trim();
@@ -290,14 +317,14 @@ const fetchActivePoll = async () => {
     try {
       data = JSON.parse(rawText);
 
-      // 檢查即時問答後端是否回傳錯誤
+      // 檢查投票與回饋後端是否回傳錯誤
       if (data && data.status === 'error') {
-        pollErrorMessage.value = '即時問答 API 異常';
+        pollErrorMessage.value = '投票與回饋 API 異常';
         pollErrorDetail.value = data.message;
         return;
       }
     } catch (e) {
-      console.error('即時問答 JSON 解析失敗:', rawText);
+      console.error('投票與回饋 JSON 解析失敗:', rawText);
       pollErrorMessage.value = '解析 JSON 失敗';
       pollErrorDetail.value = `收到內容：${rawText.slice(0, 100)}...`;
       return;
@@ -319,7 +346,7 @@ const fetchActivePoll = async () => {
       const id = String(rawData.id || rawData.Id || rawData.ID || rawData.pollId || question || '');
       const type = (rawData.type || rawData.Type || 'single').toLowerCase().replace(/\s+/g, '_');
       const options = rawData.options || rawData.Options || [];
-      
+
       let parsedOptions = [];
       if (Array.isArray(options)) {
         parsedOptions = options;
@@ -327,17 +354,24 @@ const fetchActivePoll = async () => {
         try { parsedOptions = JSON.parse(options); } 
         catch (e) { parsedOptions = options.split(',').map(s => s.trim()); }
       }
-      
+
       return { id, question, type, options: parsedOptions };
     }).filter(p => p.question);
 
     // 更新題目列表
     activePolls.value = processedPolls;
 
+    // 讀取本地已提交的題目紀錄
+    const localSubmissions = JSON.parse(localStorage.getItem('poll_submissions') || '{}');
+    const localAnswers = JSON.parse(localStorage.getItem('poll_answers') || '{}');
+
     // 初始化每題的作答與提交狀態 (如果尚未存在)
     processedPolls.forEach(p => {
       if (pollAnswers.value[p.id] === undefined) {
-        if (p.type === 'multiple') {
+        // 優先從本地儲存讀取答案，若無則初始化
+        if (localAnswers[p.id] !== undefined) {
+          pollAnswers.value[p.id] = localAnswers[p.id];
+        } else if (p.type === 'multiple') {
           pollAnswers.value[p.id] = [];
         } else if (['short_answer', 'shortanswer', 'qa'].includes(p.type)) {
           pollAnswers.value[p.id] = '';
@@ -346,8 +380,13 @@ const fetchActivePoll = async () => {
         }
       }
       if (pollSubmissions.value[p.id] === undefined) {
-        pollSubmissions.value[p.id] = false;
+        pollSubmissions.value[p.id] = !!localSubmissions[p.id];
       }
+    });
+
+    // 如果有已提交的題目，順便抓取統計結果
+    processedPolls.forEach(p => {
+      if (pollSubmissions.value[p.id]) fetchPollResults(p.id);
     });
 
     if (processedPolls.length === 0) {
@@ -360,6 +399,21 @@ const fetchActivePoll = async () => {
   } finally {
     isPollLoading.value = false;
   }
+};
+
+// 輔助函式：將投票答案轉為易讀文字
+const getPollDisplayAnswer = (poll) => {
+  const answer = pollAnswers.value[poll.id];
+  if (answer === undefined || answer === null || answer === '') return '未填答';
+  
+  if (poll.type === 'boolean') return answer === true ? '正確 (O)' : '錯誤 (X)';
+  if (poll.type === 'single' || poll.type === 'poll') {
+    return typeof answer === 'number' ? (poll.options[answer] || answer) : answer;
+  }
+  if (poll.type === 'multiple') {
+    return Array.isArray(answer) ? answer.map(idx => typeof idx === 'number' ? (poll.options[idx] || idx) : idx).join(', ') : answer;
+  }
+  return answer;
 };
 
 const submitPoll = async (poll) => {
@@ -409,15 +463,39 @@ const submitPoll = async (poll) => {
       body: JSON.stringify(pollData)
     });
     pollSubmissions.value[poll.id] = true;
+    fetchPollResults(poll.id); // 提交後立即抓取一次結果
+    
+    // 更新本地儲存的提交狀態
+    const localSubmissions = JSON.parse(localStorage.getItem('poll_submissions') || '{}');
+    localSubmissions[poll.id] = true;
+    localStorage.setItem('poll_submissions', JSON.stringify(localSubmissions));
+    
+    // 同步儲存答案數值
+    const localAnswers = JSON.parse(localStorage.getItem('poll_answers') || '{}');
+    localAnswers[poll.id] = answer;
+    localStorage.setItem('poll_answers', JSON.stringify(localAnswers));
+
     alert(`「${poll.question}」已提交成功！`);
   } catch (error) {
     alert('提交失敗');
   }
 };
 
+// 處理修改答案：同時更新 Vue 狀態與本地儲存
+const modifyPoll = (pollId) => {
+  pollSubmissions.value[pollId] = false;
+  const localSubmissions = JSON.parse(localStorage.getItem('poll_submissions') || '{}');
+  delete localSubmissions[pollId];
+  localStorage.setItem('poll_submissions', JSON.stringify(localSubmissions));
+  
+  const localAnswers = JSON.parse(localStorage.getItem('poll_answers') || '{}');
+  delete localAnswers[pollId];
+  localStorage.setItem('poll_answers', JSON.stringify(localAnswers));
+};
+
 onMounted(() => {
   loadQuiz();
-  // 初始化輪詢即時問答 (每 10 秒檢查一次)
+  // 初始化輪詢投票與回饋 (每 10 秒檢查一次)
   fetchActivePoll();
   pollTimer = setInterval(fetchActivePoll, 10000);
 });
@@ -440,7 +518,7 @@ onUnmounted(() => {
         一般測驗
       </button>
       <button :class="{ active: currentTab === 'poll' }" @click="currentTab = 'poll'">
-        即時問答 
+        投票與回饋 
         <span v-if="activePolls.length > 0 && activePolls.some(p => !pollSubmissions[p.id])" class="poll-badge">●</span>
       </button>
     </nav>
@@ -521,6 +599,7 @@ onUnmounted(() => {
             @click="submitExam" 
             class="submit-btn" 
             :class="{ 'pulse-btn': progressPercentage === 100 }"
+            :disabled="!studentName.trim()"
           >
             提交測驗
           </button>
@@ -530,11 +609,11 @@ onUnmounted(() => {
       <div v-else class="result-card">
         <h2>測驗完成</h2>
         <p class="score-display">您的得分：<span>{{ finalScore }}</span></p>
-        <button @click="isSubmitted = false; studentName = ''; loadQuiz()" class="retry-btn">重新作答</button>
+        <button @click="isSubmitted = false; loadQuiz()" class="retry-btn">重新作答</button>
       </div>
       </div>
 
-      <!-- 2. 即時問答區塊 -->
+      <!-- 2. 投票與回饋區塊 -->
       <div v-else-if="currentTab === 'poll'" class="poll-view">
         <div v-if="isPollLoading" class="loading-state">檢查即時題目中...</div>
         
@@ -554,7 +633,7 @@ onUnmounted(() => {
         </div>
 
         <div v-if="activePolls.length === 0" class="empty-notice">
-          <p>目前沒有進行中的即時問答。</p>
+          <p>目前沒有進行中的投票與回饋。</p>
           <p style="font-size: 0.9rem; color: #999;">(系統會自動更新，請稍候)</p>
           <button @click="fetchActivePoll" class="retry-btn" style="margin-top: 15px; width: auto; padding: 10px 20px;">
             手動刷新
@@ -565,18 +644,35 @@ onUnmounted(() => {
           <div v-for="poll in activePolls" :key="poll.id">
             <!-- 已提交狀態 -->
             <div v-if="pollSubmissions[poll.id]" class="result-card" style="margin-bottom: 20px;">
-              <h3>已參與投票：{{ poll.question }}</h3>
-              <p>請等待老師顯示統計結果。</p>
-              <button @click="pollSubmissions[poll.id] = false" class="retry-btn" style="margin-top: 15px; width: auto; padding: 10px 20px;">
+              <h3 class="poll-result-title">{{ poll.question }}</h3>
+              
+              <div class="user-answer-box">
+                <span class="user-answer-label">您的回答：</span>
+                <span class="user-answer-text">{{ getPollDisplayAnswer(poll) }}</span>
+              </div>
+              
+              <!-- 顯示即時統計結果 -->
+              <div v-if="pollResults[poll.id]" class="poll-results-display">
+                <div v-for="(count, label) in pollResults[poll.id].results" :key="label" class="result-bar-item">
+                  <div class="result-bar-info">
+                    <span class="result-bar-label">{{ label }}</span>
+                    <span class="result-bar-count">{{ count }} 票 ({{ Math.round((count / pollResults[poll.id].total) * 100) || 0 }}%)</span>
+                  </div>
+                  <div class="result-bar-bg">
+                    <div class="result-bar-fill" :style="{ width: (count / pollResults[poll.id].total * 100) + '%' }"></div>
+                  </div>
+                </div>
+                <p class="total-votes-tag">{{ pollResults[poll.id].total }}</p>
+              </div>
+              <p v-else class="loading-results">正在載入統計結果...</p>
+
+              <button @click="modifyPoll(poll.id)" class="retry-btn" style="margin-top: 15px; width: auto; padding: 10px 20px;">
                 修改答案
               </button>
             </div>
 
             <!-- 作答區塊 -->
             <div v-else class="question-card">
-              <div class="poll-header">
-                <span class="live-tag">LIVE 即時問答</span>
-              </div>
               <p class="question-text">{{ poll.question }}</p>
               <div class="type-badge-row">{{ getQuestionTypeLabel(poll.type) }}</div>
               
@@ -613,7 +709,7 @@ onUnmounted(() => {
                 </template>
               </div>
 
-              <button @click="submitPoll(poll)" class="submit-btn" style="margin-top: 20px;">
+              <button @click="submitPoll(poll)" class="submit-btn" style="margin-top: 20px;" :disabled="!studentName.trim()">
                 提交答案
               </button>
             </div>
@@ -629,13 +725,19 @@ onUnmounted(() => {
 /* 確保整個應用程式容器佔滿螢幕 */
 .quiz-container {
   width: 100%;
-  max-width: 600px;
-  margin: 0 auto;
   min-height: 100vh;
-  padding: 20px 15px;
+  padding: 20px;
   font-family: Arial, sans-serif;
   color: #333;
   box-sizing: border-box;
+  background-color: #f7fafc; /* 加入底色，提升大螢幕觀感 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+header, .tab-nav, main {
+  width: 100%;
+  max-width: 1300px; /* 進一步提高寬度上限，適合大螢幕 */
 }
 
 header {
@@ -654,7 +756,7 @@ header {
 
 .tab-nav button {
   flex: 1;
-  padding: 12px;
+  padding: 10px 12px;
   border: none;
   background: transparent;
   color: #718096;
@@ -663,6 +765,7 @@ header {
   font-weight: bold;
   position: relative;
   transition: all 0.2s;
+  font-size: 1rem;
 }
 
 .tab-nav button.active {
@@ -684,17 +787,6 @@ header {
   50% { opacity: 0; }
 }
 
-.live-tag {
-  background: #e53e3e;
-  color: white;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: bold;
-  letter-spacing: 0.5px;
-  animation: pulse-red 2s infinite;
-}
-
 @keyframes pulse-red {
   0% { opacity: 1; }
   50% { opacity: 0.7; }
@@ -703,7 +795,7 @@ header {
 
 .question-card {
   background: white;
-  padding: 24px;
+  padding: clamp(20px, 3vw, 40px); /* 隨螢幕大小調整內邊距 */
   border-radius: 16px;
   margin-bottom: 24px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.05);
@@ -711,7 +803,8 @@ header {
 
 .question-text {
   font-weight: bold;
-  font-size: 1.1rem;
+  /* 響應式字體：在手機上維持 1.1rem，在大螢幕則隨寬度放大，最高至 2rem 確保遠端可視 */
+  font-size: clamp(1.1rem, 2.5vw, 2rem);
 }
 
 .type-badge-row {
@@ -722,10 +815,26 @@ header {
 }
 
 .options {
-  display: flex;
+  display: flex; /* 預設為單欄，適用於手機 */
   flex-direction: column;
   gap: 10px;
   margin-top: 10px;
+}
+
+/* 在平板或較大螢幕上顯示兩欄 */
+@media (min-width: 768px) {
+  .options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 自動調整為兩欄或更多 */
+    gap: 15px; /* 增加間距 */
+  }
+}
+
+/* 在大螢幕（如教室電子白板）上顯示三欄 */
+@media (min-width: 1200px) {
+  .options {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 自動調整為三欄或更多 */
+  }
 }
 
 .student-info {
@@ -815,6 +924,60 @@ header {
   transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 投票結果進度條 */
+.poll-results-display {
+  margin: 20px 0;
+  text-align: left;
+}
+.result-bar-item {
+  margin-bottom: 15px;
+}
+.result-bar-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 0.95rem;
+  font-weight: bold;
+}
+.result-bar-bg {
+  background: #edf2f7;
+  height: 24px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.result-bar-fill {
+  background: linear-gradient(90deg, #42b983, #38a169);
+  height: 100%;
+  transition: width 1s ease-out;
+}
+.total-votes-tag {
+  font-size: 0.85rem;
+  color: #718096;
+  text-align: right;
+  margin-top: 10px;
+}
+
+.user-answer-box {
+  background: #f0fff4;
+  border: 1px solid #c6f6d5;
+  padding: 12px;
+  border-radius: 8px;
+  margin: 15px 0;
+  text-align: left;
+}
+.user-answer-label {
+  color: #2f855a;
+  font-weight: bold;
+}
+.user-answer-text {
+  color: #276749;
+}
+.loading-results {
+  color: #a0aec0;
+  font-style: italic;
+  margin: 20px 0;
+}
+
 .option-item:hover {
   border-color: #42b983;
   background-color: #f9fdfb;
@@ -878,13 +1041,16 @@ header {
 }
 
 .submit-btn, .retry-btn {
-  width: 100%;
-  padding: 12px;
+  display: block;
+  width: fit-content;
+  min-width: 180px;
+  margin: 20px auto;
+  padding: 12px 32px;
   background-color: #42b983;
   color: white;
   border: none;
-  border-radius: 4px;
-  font-size: 1rem;
+  border-radius: 12px;
+  font-size: 1.1rem;
   cursor: pointer;
 }
 
