@@ -361,17 +361,10 @@ const fetchActivePoll = async () => {
     // 更新題目列表
     activePolls.value = processedPolls;
 
-    // 讀取本地已提交的題目紀錄
-    const localSubmissions = JSON.parse(localStorage.getItem('poll_submissions') || '{}');
-    const localAnswers = JSON.parse(localStorage.getItem('poll_answers') || '{}');
-
     // 初始化每題的作答與提交狀態 (如果尚未存在)
     processedPolls.forEach(p => {
       if (pollAnswers.value[p.id] === undefined) {
-        // 優先從本地儲存讀取答案，若無則初始化
-        if (localAnswers[p.id] !== undefined) {
-          pollAnswers.value[p.id] = localAnswers[p.id];
-        } else if (p.type === 'multiple') {
+        if (p.type === 'multiple') {
           pollAnswers.value[p.id] = [];
         } else if (['short_answer', 'shortanswer', 'qa'].includes(p.type)) {
           pollAnswers.value[p.id] = '';
@@ -380,11 +373,11 @@ const fetchActivePoll = async () => {
         }
       }
       if (pollSubmissions.value[p.id] === undefined) {
-        pollSubmissions.value[p.id] = !!localSubmissions[p.id];
+        pollSubmissions.value[p.id] = false;
       }
     });
 
-    // 如果有已提交的題目，順便抓取統計結果
+    // 檢查每題的提交狀態並抓取結果
     processedPolls.forEach(p => {
       if (pollSubmissions.value[p.id]) fetchPollResults(p.id);
     });
@@ -465,16 +458,6 @@ const submitPoll = async (poll) => {
     pollSubmissions.value[poll.id] = true;
     fetchPollResults(poll.id); // 提交後立即抓取一次結果
     
-    // 更新本地儲存的提交狀態
-    const localSubmissions = JSON.parse(localStorage.getItem('poll_submissions') || '{}');
-    localSubmissions[poll.id] = true;
-    localStorage.setItem('poll_submissions', JSON.stringify(localSubmissions));
-    
-    // 同步儲存答案數值
-    const localAnswers = JSON.parse(localStorage.getItem('poll_answers') || '{}');
-    localAnswers[poll.id] = answer;
-    localStorage.setItem('poll_answers', JSON.stringify(localAnswers));
-
     alert(`「${poll.question}」已提交成功！`);
   } catch (error) {
     alert('提交失敗');
@@ -484,13 +467,6 @@ const submitPoll = async (poll) => {
 // 處理修改答案：同時更新 Vue 狀態與本地儲存
 const modifyPoll = (pollId) => {
   pollSubmissions.value[pollId] = false;
-  const localSubmissions = JSON.parse(localStorage.getItem('poll_submissions') || '{}');
-  delete localSubmissions[pollId];
-  localStorage.setItem('poll_submissions', JSON.stringify(localSubmissions));
-  
-  const localAnswers = JSON.parse(localStorage.getItem('poll_answers') || '{}');
-  delete localAnswers[pollId];
-  localStorage.setItem('poll_answers', JSON.stringify(localAnswers));
 };
 
 onMounted(() => {
