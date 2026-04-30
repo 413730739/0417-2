@@ -6,7 +6,7 @@ import { ref, onMounted, computed, watch, onUnmounted } from 'vue'
 // ⚠️ 如果教師端分開了即時問答與測驗資料庫，請分別設定以下網址
 // 開發環境使用 Vite Proxy 解決 CORS 問題，生產環境則使用完整 GAS 網址
 const POLL_DATABASE_URL = 'https://script.google.com/macros/s/AKfycbxgCLOipsnuhxbQmxGi_Wl3ndHESVaxjQ4qc4BPgdWmSZPOlQWnrwdDTE5N34LMaBwGHA/exec';
-const DATABASE_URL = 'https://script.google.com/macros/s/AKfycbyHUlQvBFXi6gtHqrLvS5dVKKDf8RLNSGGnxJs85zybPsmPT-X6DCwKR8gDkdq92VgSLA/exec';
+const DATABASE_URL = 'https://script.google.com/macros/s/AKfycbxLSLXbOQBjMii0WXi3YNbGLAFA6FxLwsBDhUrLlR942HecqgS19hM-nuDxFeULk9y3gg/exec';
 
 const QUIZ_URL = import.meta.env.DEV 
   ? '/api-quiz/exec' 
@@ -21,6 +21,7 @@ const currentTab = ref('quiz'); // 'quiz' 或 'poll'
 const quizQuestions = ref([]); // 儲存從教師端抓取的題目
 const studentName = ref('');    // 學生姓名
 const isSubmitted = ref(false); // 是否已提交
+const isSubmitting = ref(false); // 正在提交中
 const finalScore = ref(0);      // 計算出的分數
 const isLoading = ref(true);    // 載入狀態
 const errorMessage = ref('');    // 錯誤簡述 (顯示於畫面)
@@ -98,7 +99,7 @@ const loadQuiz = async () => {
       const htmlTitle = titleMatch ? titleMatch[1] : '未知 HTML 頁面';
       
       errorMessage.value = `後端服務異常 [${htmlTitle}]`;
-      errorDetail.value = `GAS 回傳了非 JSON 內容。\n\n常見原因與修復方案：\n1. 檢查 GAS 程式碼中是否有 "&gt;" 字樣（請手動改回符號 ">"）。\n2. 在「管理部署」中必須選擇【新版本】重新發布。\n3. 確保「執行身分」設定為【我】(Me) 且「誰可以存取」為【所有人】。\n\n檢查連結：\n${DATABASE_URL}?action=getQuestions`;
+      errorDetail.value = `GAS 回傳了非 JSON 內容 (可能是 Google 的錯誤頁面)。\n\n常見原因與修復方案：\n1. 檢查 GAS 程式碼中是否有 "&gt;" 字樣（請手動改回符號 ">"）。\n2. 確保 GAS 腳本中包含 "function doGet(e)" 函式來處理讀取。\n3. 在「管理部署」中必須選擇【新版本】並點擊「部署」。\n4. 確保「誰可以存取」設定為【所有人】(Anyone)。\n\n檢查連結 (請確認是否能看到題目的 JSON 內容)：\n${DATABASE_URL}?action=getQuestions`;
       isLoading.value = false;
       return;
     }
@@ -193,15 +194,8 @@ const getQuestionTypeLabel = (type) => {
 
 // --- 2. 提交成績 (Submit Results) ---
 const submitExam = async () => {
-  if (!studentName.value.trim()) {
-    return alert('請先輸入姓名再提交');
-  }
-
-  // 檢查是否有題目未作答
-  if (quizQuestions.value.some(q => q.userAnswer === null || (Array.isArray(q.userAnswer) && q.userAnswer.length === 0))) {
-    if(!confirm('還有題目沒寫完，確定要提交嗎？')) return;
-  }
-
+  if (isSubmitting.value) return;
+  
   // A. 計算分數
   let correctCount = 0;
   let scoreableCount = 0; // 僅統計有標準答案的題目
@@ -230,6 +224,13 @@ const submitExam = async () => {
   finalScore.value = scoreableCount > 0 
     ? Math.round((correctCount / scoreableCount) * 100)
     : 100;
+
+  // 檢查是否有題目未作答
+  if (quizQuestions.value.some(q => q.userAnswer === null || (Array.isArray(q.userAnswer) && q.userAnswer.length === 0))) {
+    if(!confirm('還有題目沒寫完，確定要提交嗎？')) return;
+  }
+
+  isSubmitting.value = true;
 
   // B. 準備傳送給教師端的資料 (合併摘要與詳細作答)
   const submissionData = {
@@ -261,6 +262,8 @@ const submitExam = async () => {
     console.error('提交成績出錯:', error);
     alert('成績上傳失敗，請檢查網路連線');
     // 這裡可以根據需要判斷是哪個請求失敗，給出更精確的提示
+  } finally {
+    isSubmitting.value = false;
   }
 };
 
@@ -418,8 +421,8 @@ const getPollDisplayAnswer = (poll) => {
 };
 
 const submitPoll = async (poll) => {
-  if (!studentName.value.trim()) return alert('請先輸入姓名');
-  
+  if (isSubmitting.value) return;
+
   const answer = pollAnswers.value[poll.id];
   const isEmpty = answer === null || 
                  (Array.isArray(answer) && answer.length === 0) ||
@@ -456,6 +459,8 @@ const submitPoll = async (poll) => {
     answer: displayAnswer
   };
 
+  isSubmitting.value = true;
+
   try {
     await fetch(POLL_URL, {
       method: 'POST',
@@ -469,6 +474,8 @@ const submitPoll = async (poll) => {
     alert(`「${poll.question}」已提交成功！`);
   } catch (error) {
     alert('提交失敗');
+  } finally {
+    isSubmitting.value = false;
   }
 };
 
@@ -478,6 +485,10 @@ const modifyPoll = (pollId) => {
 };
 
 onMounted(() => {
+  // 頁面載入時讀取先前存過的姓名
+  const savedName = localStorage.getItem('student_name');
+  if (savedName) studentName.value = savedName;
+
   loadQuiz();
   // 初始化輪詢投票與回饋 (每 10 秒檢查一次)
   fetchActivePoll();
@@ -522,7 +533,9 @@ onUnmounted(() => {
       <div v-else-if="!isSubmitted">
         <!-- 沒題目時的顯示狀態 -->
         <div v-if="quizQuestions.length === 0" class="empty-notice">
-          <p>尚未有測驗題目，請等待老師出題。</p>
+          <div class="waiting-icon">⏳</div>
+          <p>尚未有測驗題目</p>
+          <p class="sub-text">請等待老師出題後，點擊下方按鈕更新</p>
           <button @click="loadQuiz" class="retry-btn" style="margin-top: 15px; width: auto; padding: 10px 30px;">
             點此重新載入題目
           </button>
@@ -530,8 +543,8 @@ onUnmounted(() => {
 
         <div v-else>
           <div class="student-info">
-            <label>您的姓名：</label>
-            <input v-model="studentName" type="text" placeholder="請輸入姓名" class="name-input">
+            <label>您的姓名：<span class="required">*</span></label>
+            <input v-model="studentName" type="text" placeholder="請輸入姓名（必填）" class="name-input" required>
           </div>
 
           <!-- 進度條 -->
@@ -582,8 +595,8 @@ onUnmounted(() => {
           <button 
             @click="submitExam" 
             class="submit-btn" 
-            :class="{ 'pulse-btn': progressPercentage === 100 }"
-            :disabled="!studentName.trim()"
+            :class="{ 'pulse-btn': progressPercentage === 100 && studentName.trim() }"
+            :disabled="!studentName.trim() || isSubmitting"
           >
             提交測驗
           </button>
@@ -612,8 +625,8 @@ onUnmounted(() => {
 
         <div v-else>
         <div class="student-info">
-          <label>您的姓名：</label>
-          <input v-model="studentName" type="text" placeholder="請輸入姓名" class="name-input">
+          <label>您的姓名：<span class="required">*</span></label>
+          <input v-model="studentName" type="text" placeholder="請輸入姓名（必填）" class="name-input" required>
         </div>
 
         <div v-if="activePolls.length === 0" class="empty-notice">
@@ -693,7 +706,7 @@ onUnmounted(() => {
                 </template>
               </div>
 
-              <button @click="submitPoll(poll)" class="submit-btn" style="margin-top: 20px;" :disabled="!studentName.trim()">
+              <button @click="submitPoll(poll)" class="submit-btn" style="margin-top: 20px;" :disabled="!studentName.trim() || isSubmitting">
                 提交答案
               </button>
             </div>
@@ -871,6 +884,19 @@ main {
   border-color: #42b983;
 }
 
+.required {
+  color: #e53e3e;
+  font-weight: bold;
+  margin-left: 4px;
+}
+
+.name-warning {
+  color: #e53e3e;
+  font-size: 0.85rem;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
 .poll-textarea {
   width: 100%;
   min-height: 100px; /* 調整最小高度 */
@@ -1044,13 +1070,35 @@ main {
 
 .empty-notice {
   text-align: center;
-  padding: 40px;
+  padding: 60px 40px;
   color: #666;
   background: #f0f0f0;
   border-radius: 12px; /* 調整圓角 */
   box-shadow: inset 0 2px 5px rgba(0,0,0,0.05); /* 內陰影 */
 }
 
+.empty-notice p {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin: 10px 0;
+}
+
+.empty-notice .sub-text {
+  font-size: 1rem;
+  font-weight: normal;
+  color: #888;
+}
+
+.waiting-icon {
+  font-size: 3rem;
+  margin-bottom: 10px;
+  animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 .submit-btn, .retry-btn {
   display: block;
   width: fit-content;
