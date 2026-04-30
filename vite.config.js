@@ -13,7 +13,7 @@ export default defineConfig({
       },
       // 即時問答資料庫代理
       '/api-poll': {
-        target: 'https://script.google.com/macros/s/AKfycbysFb5yGkcDHXnb1-kQ-1fYFrweXFl16kkCRi_FaKMxiRkt679ayMJdfxxRdl52_-38cg',
+        target: 'https://script.google.com/macros/s/AKfycbxgCLOipsnuhxbQmxGi_Wl3ndHESVaxjQ4qc4BPgdWmSZPOlQWnrwdDTE5N34LMaBwGHA/exec',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api-poll/, '')
       }

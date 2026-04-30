@@ -5,7 +5,7 @@ import { ref, onMounted, computed, watch, onUnmounted } from 'vue'
 // 請確保此處的 URL 與教師端設定的完全一致
 // ⚠️ 如果教師端分開了即時問答與測驗資料庫，請分別設定以下網址
 // 開發環境使用 Vite Proxy 解決 CORS 問題，生產環境則使用完整 GAS 網址
-const POLL_DATABASE_URL = 'https://script.google.com/macros/s/AKfycbxcPLSDEW3rL96lfSH9N0zTbfGSG-0xM8jMR7QAaR0t52XQoBAwj7pqVJFnemUNRE6fKg/exec';
+const POLL_DATABASE_URL = 'https://script.google.com/macros/s/AKfycbxgCLOipsnuhxbQmxGi_Wl3ndHESVaxjQ4qc4BPgdWmSZPOlQWnrwdDTE5N34LMaBwGHA/exec';
 const DATABASE_URL = 'https://script.google.com/macros/s/AKfycbyHUlQvBFXi6gtHqrLvS5dVKKDf8RLNSGGnxJs85zybPsmPT-X6DCwKR8gDkdq92VgSLA/exec';
 
 const QUIZ_URL = import.meta.env.DEV 
