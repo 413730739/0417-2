@@ -698,54 +698,65 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* 確保整個應用程式容器佔滿螢幕 */
 .quiz-container {
-  width: 100%;
+  min-width: 320px; /* 確保在小螢幕下也有最小寬度 */
   min-height: 100vh;
-  padding: 20px;
+  padding: clamp(10px, 5vw, 40px); /* 響應式邊距，小螢幕10px，大螢幕40px */
   font-family: Arial, sans-serif;
   color: #333;
   box-sizing: border-box;
-  background-color: #f7fafc; /* 加入底色，提升大螢幕觀感 */
+  background: linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%); /* 更柔和的漸變背景 */
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-header, .tab-nav, main {
+
+header, .tab-nav {
   width: 100%;
-  max-width: 1300px; /* 進一步提高寬度上限，適合大螢幕 */
-}
-
-header {
+  max-width: 900px; /* 限制最大寬度，避免過寬 */
   text-align: center;
-  margin-bottom: 20px;
+  margin-bottom: 30px;
 }
 
+header h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem); /* 響應式字體大小 */
+  color: #2c3e50; /* 更深的標題顏色 */
+  text-shadow: 0 4px 8px rgba(0,0,0,0.15); /* 更明顯的文字陰影 */
+  margin: 0;
+  letter-spacing: 1px; /* 增加字距 */
+}
+ 
 .tab-nav {
   display: flex;
-  background: #edf2f7;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
   padding: 5px;
   border-radius: 12px;
-  margin-bottom: 25px;
-  justify-content: center;
+  margin-bottom: 30px;
+  justify-content: center; /* 確保按鈕居中 */
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
 }
 
 .tab-nav button {
   flex: 1;
   padding: 10px 12px;
   border: none;
-  background: transparent;
-  color: #718096;
+  background: transparent; /* 預設透明背景 */
+  color: #555; /* 預設文字顏色 */
   border-radius: 8px;
   cursor: pointer;
   font-weight: bold;
   position: relative;
-  transition: all 0.2s;
+  transition: all 0.3s ease; /* 更平滑的過渡效果 */
   font-size: 1rem;
+  letter-spacing: 0.5px;
 }
 
+.tab-nav button:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.3); /* 懸停效果 */
+}
 .tab-nav button.active {
-  background: #42b983;
+  background: #38a169;
   color: white;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
@@ -759,22 +770,45 @@ header {
   animation: blink 1s infinite;
 }
 
+main {
+  width: min(90vw, 900px); /* 響應式寬度，最大900px */
+  height: min(67.5vw, 675px); /* 保持4:3長寬比，67.5vw = 90vw * 3/4 */
+  background: #ffffff; /* 主內容區塊的背景 */
+  border-radius: 16px; /* 圓角 */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08); /* 柔和的陰影 */
+  padding: clamp(20px, 4vw, 40px); /* 內部填充隨比例增加 */
+  box-sizing: border-box; /* 確保padding不影響尺寸 */
+  overflow-y: auto; /* 如果內容過多，允許滾動 */
+}
+/* 大螢幕時的佈局：資訊欄與題目欄並排 */
+@media (min-width: 1200px) {
+  .quiz-layout {
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    gap: 30px;
+    align-items: start;
+  }
+  .sidebar {
+    position: sticky;
+    top: 30px;
+  }
+}
+
 @keyframes blink {
   50% { opacity: 0; }
 }
 
-@keyframes pulse-red {
-  0% { opacity: 1; }
-  50% { opacity: 0.7; }
-  100% { opacity: 1; }
-}
-
 .question-card {
-  background: white;
-  padding: clamp(20px, 3vw, 40px); /* 隨螢幕大小調整內邊距 */
+  background: #fdfdfd; /* 題目卡片背景微調 */
+  padding: 22px 28px;
   border-radius: 16px;
   margin-bottom: 24px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08); /* 更柔和的陰影 */
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.question-card:hover {
+  transform: translateY(-3px); /* 懸停時輕微上浮 */
 }
 
 .question-text {
@@ -784,41 +818,29 @@ header {
 }
 
 .type-badge-row {
-  color: #42b983;
-  font-size: 0.9rem;
-  margin: 5px 0 10px 0;
-  font-weight: 500;
+  display: inline-block;
+  background: #e0f7fa; /* 調整徽章背景色 */
+  color: #2c7a7b;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 10px 0 15px 0;
 }
 
 .options {
-  display: flex; /* 預設為單欄，適用於手機 */
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-/* 在平板或較大螢幕上顯示兩欄 */
-@media (min-width: 768px) {
-  .options {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 自動調整為兩欄或更多 */
-    gap: 15px; /* 增加間距 */
-  }
-}
-
-/* 在大螢幕（如教室電子白板）上顯示三欄 */
-@media (min-width: 1200px) {
-  .options {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 自動調整為三欄或更多 */
-  }
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 調整選項網格佈局 */
+  gap: 15px;
+  margin-top: 20px;
 }
 
 .student-info {
   margin-bottom: 24px;
-  background: white;
-  padding: 16px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  background: #f8f9fa; /* 學生資訊區塊背景 */
+  padding: 18px 25px; /* 調整填充 */
+  border-radius: 16px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
 }
 
 .student-info label {
@@ -830,11 +852,11 @@ header {
 
 .name-input {
   width: 100%;
-  padding: 12px;
-  border: 2px solid #edf2f7;
+  padding: 10px 12px; /* 調整填充 */
+  border: 1px solid #e2e8f0; /* 更細的邊框 */
   border-radius: 8px;
   font-size: 1rem;
-  box-sizing: border-box;
+  box-sizing: border-box; /* 確保寬度計算正確 */
   outline: none;
   transition: border-color 0.3s;
 }
@@ -845,8 +867,8 @@ header {
 
 .poll-textarea {
   width: 100%;
-  min-height: 120px;
-  padding: 14px;
+  min-height: 100px; /* 調整最小高度 */
+  padding: 12px; /* 調整填充 */
   border: 2px solid #edf2f7;
   border-radius: 12px;
   font-size: 1rem;
@@ -864,39 +886,40 @@ header {
 
 .option-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start; /* 讓選項內容與 radio/checkbox 對齊 */
   padding: 12px 16px;
-  border: 2px solid #edf2f7;
-  border-radius: 12px;
+  border: 1px solid #e2e8f0; /* 更細的邊框 */
+  border-radius: 15px;
   cursor: pointer;
   transition: all 0.25s ease;
   background-color: #fff;
   user-select: none;
+  line-height: 1.4; /* 增加行高 */
 }
 
 /* 進度條樣式 */
 .progress-container {
-  margin-bottom: 24px;
+  margin-bottom: 24px; /* 保持間距 */
   background: white;
-  padding: 16px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  padding: 14px 20px;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
 }
 .progress-text {
-  font-size: 0.9rem;
+  font-size: 1rem;
   margin-bottom: 8px;
   font-weight: bold;
   color: #42b983;
 }
 .progress-bar-bg {
-  background-color: #edf2f7;
+  background-color: #e2e8f0; /* 進度條背景色 */
   height: 8px;
   border-radius: 4px;
   overflow: hidden;
 }
 .progress-bar-fill {
-  background-color: #42b983;
-  height: 100%;
+  background: linear-gradient(to right, #48bb78, #38a169); /* 漸變色進度條 */
+  height: 100%; /* 確保高度填滿 */
   transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -909,20 +932,22 @@ header {
   margin-bottom: 15px;
 }
 .result-bar-info {
-  display: flex;
+  display: flex; /* 保持 flex 佈局 */
   justify-content: space-between;
   margin-bottom: 5px;
   font-size: 0.95rem;
   font-weight: bold;
+  color: #4a5568; /* 調整文字顏色 */
 }
 .result-bar-bg {
-  background: #edf2f7;
-  height: 24px;
-  border-radius: 12px;
+  background: #e2e8f0; /* 調整背景色 */
+  height: 28px;
+  border-radius: 14px;
   overflow: hidden;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
 }
 .result-bar-fill {
-  background: linear-gradient(90deg, #42b983, #38a169);
+  background: linear-gradient(90deg, #66bb6a, #43a047); /* 調整漸變色 */
   height: 100%;
   transition: width 1s ease-out;
 }
@@ -934,11 +959,11 @@ header {
 }
 
 .user-answer-box {
-  background: #f0fff4;
-  border: 1px solid #c6f6d5;
-  padding: 12px;
-  border-radius: 8px;
-  margin: 15px 0;
+  background: #e6fffa; /* 調整背景色 */
+  border: 1px solid #81e6d9; /* 調整邊框顏色 */
+  padding: 15px; /* 調整填充 */
+  border-radius: 10px; /* 調整圓角 */
+  margin: 20px 0; /* 調整間距 */
   text-align: left;
 }
 .user-answer-label {
@@ -955,22 +980,23 @@ header {
 }
 
 .option-item:hover {
-  border-color: #42b983;
-  background-color: #f9fdfb;
+  border-color: #68d391; /* 懸停時邊框顏色 */
+  background-color: #f0fff4; /* 懸停時背景色 */
 }
 
 /* 當內部的 input 被勾選時，改變整個標籤的樣式 */
 .option-item:has(input:checked) {
-  border-color: #42b983;
-  background-color: #e7f3ed;
-  box-shadow: 0 2px 6px rgba(66, 185, 131, 0.1);
+  border-color: #48bb78; /* 選中時邊框顏色 */
+  background-color: #d4edda; /* 選中時背景色 */
+  box-shadow: 0 4px 10px rgba(72, 187, 120, 0.15); /* 更明顯的陰影 */
 }
 
 .option-item input {
   margin-right: 12px;
   width: 18px;
   height: 18px;
-  accent-color: #42b983; /* 統一 Checkbox 與 Radio 的主題顏色 */
+  accent-color: #38a169; /* 調整選中顏色 */
+  flex-shrink: 0; /* 防止 input 被壓縮 */
 }
 
 .loading-state {
@@ -982,10 +1008,11 @@ header {
 
 .error-debug-container {
   background-color: #fff;
-  border-left: 5px solid #ff4d4f;
+  border-left: 6px solid #e53e3e; /* 更深的紅色邊框 */
   border-radius: 12px;
   padding: 24px;
   margin: 20px 0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08); /* 增加陰影 */
   text-align: left;
 }
 
@@ -998,13 +1025,14 @@ header {
 
 .error-detail {
   background: #1a202c;
-  color: #a0aec0;
+  color: #cbd5e0; /* 調整文字顏色 */
   padding: 15px;
   border-radius: 4px;
   font-size: 0.85rem;
   white-space: pre-wrap;
   word-break: break-all;
   max-height: 400px;
+  line-height: 1.6; /* 增加行高 */
   overflow-y: auto;
 }
 
@@ -1013,7 +1041,8 @@ header {
   padding: 40px;
   color: #666;
   background: #f0f0f0;
-  border-radius: 8px;
+  border-radius: 12px; /* 調整圓角 */
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.05); /* 內陰影 */
 }
 
 .submit-btn, .retry-btn {
@@ -1021,23 +1050,32 @@ header {
   width: fit-content;
   min-width: 180px;
   margin: 20px auto;
-  padding: 12px 32px;
-  background-color: #42b983;
+  padding: 14px 35px; /* 調整填充 */
+  background: linear-gradient(45deg, #48bb78, #38a169); /* 漸變背景 */
   color: white;
   border: none;
-  border-radius: 12px;
+  border-radius: 50px;
   font-size: 1.1rem;
+  font-weight: 600; /* 調整字重 */
   cursor: pointer;
+  box-shadow: 0 4px 14px rgba(56, 161, 105, 0.4);
+  transition: all 0.3s ease;
 }
 
 .submit-btn:disabled {
   background-color: #ccc;
-  cursor: not-allowed;
+  background: linear-gradient(45deg, #a0aec0, #718096); /* 禁用狀態的漸變 */
+  box-shadow: none;
+}
+
+.submit-btn:not(:disabled):hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(56, 161, 105, 0.6);
 }
 
 .pulse-btn {
   animation: pulse-effect 2s infinite;
-  background-color: #38a169 !important; /* 滿分時變換成更深更顯眼的綠色 */
+  background: linear-gradient(45deg, #2f855a, #276749) !important; /* 滿分時更深的漸變 */
 }
 
 @keyframes pulse-effect {
@@ -1057,22 +1095,32 @@ header {
 
 .result-card {
   text-align: center;
-  padding: 40px;
-  background: white;
+  padding: 35px; /* 調整填充 */
+  background: #fdfdfd; /* 結果卡片背景 */
   border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  box-shadow: 0 12px 25px rgba(0,0,0,0.12); /* 更明顯的陰影 */
 }
 
+
 .score-display span {
-  font-size: 2.5rem;
-  color: #42b983;
-  font-weight: bold;
+  font-size: 4rem;
+  color: #38a169;
+  font-weight: 800;
 }
+
+/* 調整 HTML 結構對應的 Class */
+/* 如果要在 Script 裡增加 layout class，請參考以下結構範例： */
+/* <div class="quiz-layout">
+     <div class="sidebar"> (資訊與進度) </div>
+     <div class="content"> (題目卡片) </div>
+   </div> */
 
 /* 響應式調整 */
 @media (max-width: 600px) {
   h1 {
-    font-size: 1.4rem;
+    font-size: clamp(1.8rem, 8vw, 2.5rem); /* 小螢幕下標題字體 */
   }
+  /* 移除此處的 main padding，由 clamp() 統一處理 */
+  /* main { padding: 20px; } */
 }
 </style>
