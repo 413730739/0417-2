@@ -84,9 +84,16 @@ const loadQuiz = async () => {
     
     // 先讀取文字，防止 JSON 解析失敗導致抓不到錯誤內容
     const rawText = await response.text();
+    const trimmedText = rawText.trim();
+
+    // 如果回傳內容為空，直接視為尚未有題目
+    if (!trimmedText || trimmedText === '[]' || trimmedText === 'null') {
+      quizQuestions.value = [];
+      return;
+    }
 
     // 檢查是否為 HTML 報錯頁面
-    if (rawText.trim().startsWith('<!DOCTYPE') || rawText.trim().startsWith('<html')) {
+    if (trimmedText.startsWith('<!DOCTYPE') || trimmedText.startsWith('<html')) {
       const titleMatch = rawText.match(/<title>(.*?)<\/title>/i);
       const htmlTitle = titleMatch ? titleMatch[1] : '未知 HTML 頁面';
       
@@ -120,7 +127,7 @@ const loadQuiz = async () => {
     }
     
     // 彈性處理資料格式：優先讀取 "Questions" 屬性 (對應教師端設定)
-    const questions = Array.isArray(data) ? data : (data.Questions || data.questions || data.data);
+    const questions = Array.isArray(data) ? data : (data.Questions || data.questions || data.data || []);
 
     if (Array.isArray(questions)) {
       quizQuestions.value = questions.map((q, idx) => {
@@ -149,8 +156,9 @@ const loadQuiz = async () => {
         };
       });
     } else {
-      errorMessage.value = '資料載入成功，但內容格式不符';
-      errorDetail.value = `從 GAS 接收到的原始資料：\n${JSON.stringify(data, null, 2)}`;
+      // 如果解析出來不是陣列，且不是錯誤狀態，則設為空陣列
+      quizQuestions.value = [];
+      console.warn('資料載入成功，但找不到題目列表，已預設為空。');
     }
   } catch (error) {
     // 當 CORS 發生時，fetch 會拋出 TypeError: Failed to fetch
@@ -772,13 +780,11 @@ header h1 {
 
 main {
   width: min(90vw, 900px); /* 響應式寬度，最大900px */
-  height: min(67.5vw, 675px); /* 保持4:3長寬比，67.5vw = 90vw * 3/4 */
   background: #ffffff; /* 主內容區塊的背景 */
   border-radius: 16px; /* 圓角 */
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08); /* 柔和的陰影 */
   padding: clamp(20px, 4vw, 40px); /* 內部填充隨比例增加 */
   box-sizing: border-box; /* 確保padding不影響尺寸 */
-  overflow-y: auto; /* 如果內容過多，允許滾動 */
 }
 /* 大螢幕時的佈局：資訊欄與題目欄並排 */
 @media (min-width: 1200px) {
