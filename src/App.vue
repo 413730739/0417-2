@@ -722,7 +722,7 @@ onUnmounted(() => {
 .quiz-container {
   min-width: 320px; /* 確保在小螢幕下也有最小寬度 */
   min-height: 100vh;
-  padding: clamp(10px, 5vw, 40px); /* 響應式邊距，小螢幕10px，大螢幕40px */
+  padding: clamp(8px, 3vw, 30px); /* 縮小手機端外邊距，讓內容更寬 */
   font-family: Arial, sans-serif;
   color: #333;
   box-sizing: border-box;
@@ -760,7 +760,7 @@ header h1 {
 
 .tab-nav button {
   flex: 1;
-  padding: 10px 12px;
+  padding: 12px 10px; /* 增加高度更易點擊 */
   border: none;
   background: transparent; /* 預設透明背景 */
   color: #555; /* 預設文字顏色 */
@@ -769,7 +769,7 @@ header h1 {
   font-weight: bold;
   position: relative;
   transition: all 0.3s ease; /* 更平滑的過渡效果 */
-  font-size: 1rem;
+  font-size: 1.1rem; /* 調大分頁文字 */
   letter-spacing: 0.5px;
 }
 
@@ -796,7 +796,7 @@ main {
   background: #ffffff; /* 主內容區塊的背景 */
   border-radius: 16px; /* 圓角 */
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08); /* 柔和的陰影 */
-  padding: clamp(20px, 4vw, 40px); /* 內部填充隨比例增加 */
+  padding: clamp(16px, 4vw, 40px); /* 手機版內部間距稍微縮小 */
   box-sizing: border-box; /* 確保padding不影響尺寸 */
 }
 /* 大螢幕時的佈局：資訊欄與題目欄並排 */
@@ -819,7 +819,7 @@ main {
 
 .question-card {
   background: #fdfdfd; /* 題目卡片背景微調 */
-  padding: 22px 28px;
+  padding: clamp(18px, 5vw, 28px); /* 響應式卡片內距 */
   border-radius: 16px;
   margin-bottom: 24px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08); /* 更柔和的陰影 */
@@ -833,7 +833,8 @@ main {
 .question-text {
   font-weight: bold;
   /* 響應式字體：在手機上維持 1.1rem，在大螢幕則隨寬度放大，最高至 2rem 確保遠端可視 */
-  font-size: clamp(1.1rem, 2.5vw, 2rem);
+  font-size: clamp(1.25rem, 4vw, 2rem); /* 提升手機端題目字體大小 */
+  line-height: 1.4;
 }
 
 .type-badge-row {
@@ -849,15 +850,20 @@ main {
 
 .options {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 調整選項網格佈局 */
-  gap: 15px;
+  grid-template-columns: 1fr; /* 手機端優先使用單欄佈局，避免文字過擠 */
+  gap: 12px;
   margin-top: 20px;
+}
+@media (min-width: 600px) {
+  .options {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
 }
 
 .student-info {
   margin-bottom: 24px;
   background: #f8f9fa; /* 學生資訊區塊背景 */
-  padding: 18px 25px; /* 調整填充 */
+  padding: 16px 20px;
   border-radius: 16px;
   box-shadow: 0 4px 6px rgba(0,0,0,0.05);
 }
@@ -867,14 +873,15 @@ main {
   font-weight: bold;
   margin-bottom: 8px;
   color: #555;
+  font-size: 1.1rem;
 }
 
 .name-input {
   width: 100%;
-  padding: 10px 12px; /* 調整填充 */
+  padding: 12px 14px; /* 加大輸入框內距 */
   border: 1px solid #e2e8f0; /* 更細的邊框 */
   border-radius: 8px;
-  font-size: 1rem;
+  font-size: 1.1rem; /* 輸入文字加大 */
   box-sizing: border-box; /* 確保寬度計算正確 */
   outline: none;
   transition: border-color 0.3s;
@@ -903,7 +910,7 @@ main {
   padding: 12px; /* 調整填充 */
   border: 2px solid #edf2f7;
   border-radius: 12px;
-  font-size: 1rem;
+  font-size: 1.1rem;
   box-sizing: border-box;
   resize: vertical;
   outline: none;
@@ -919,14 +926,15 @@ main {
 .option-item {
   display: flex;
   align-items: flex-start; /* 讓選項內容與 radio/checkbox 對齊 */
-  padding: 12px 16px;
+  padding: 14px 18px; /* 加大選項點擊區域 */
   border: 1px solid #e2e8f0; /* 更細的邊框 */
   border-radius: 15px;
   cursor: pointer;
   transition: all 0.25s ease;
   background-color: #fff;
   user-select: none;
-  line-height: 1.4; /* 增加行高 */
+  line-height: 1.5; /* 增加行高 */
+  font-size: 1.1rem; /* 調大選項文字 */
 }
 
 /* 進度條樣式 */
@@ -1025,8 +1033,8 @@ main {
 
 .option-item input {
   margin-right: 12px;
-  width: 18px;
-  height: 18px;
+  width: 20px; /* 控制元件加大 */
+  height: 20px;
   accent-color: #38a169; /* 調整選中顏色 */
   flex-shrink: 0; /* 防止 input 被壓縮 */
 }
@@ -1078,7 +1086,7 @@ main {
 }
 
 .empty-notice p {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   font-weight: bold;
   margin: 10px 0;
 }
